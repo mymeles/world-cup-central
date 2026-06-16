@@ -1,0 +1,37 @@
+# Render Blueprint (infrastructure-as-code) for the World Cup Central backend.
+# The Fastify API + ingestion service lives in ./server and reads/writes Supabase.
+# Secrets are marked `sync: false` so they are entered in the Render dashboard,
+# never committed to git.
+services:
+  - type: web
+    name: worldcup-backend
+    runtime: node
+    rootDir: server
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Render injects PORT automatically; the server reads process.env.PORT.
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: INGEST_ENABLED
+        value: "false" # flip to "true" once a service-role key is set (best on a paid always-on plan)
+      - key: INGEST_INTERVAL_SEC
+        value: "60"
+      - key: SPORTS_API_PROVIDER
+        value: api-football
+      # --- Secrets: set these values in the Render dashboard (sync: false) ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
+      - key: SPORTS_API_KEY
+        sync: false

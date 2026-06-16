@@ -1,0 +1,32 @@
+{
+  "name": "worldcup-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dedicated API + ingestion service for World Cup Central. Reads/writes Supabase Postgres; polls sports providers on a schedule and serves normalized data to the app.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "ingest:once": "tsx src/ingest.ts --once",
+    "seed:sql": "node scripts/gen-seed.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.82",
+    "@fastify/cors": "^10.0.1",
+    "@supabase/supabase-js": "^2.46.1",
+    "ai": "^6.0.206",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "node-cron": "^3.0.3",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
