@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator, useWindowDimensions, TextStyle } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font, radius, shadow, space } from '../../constants/theme';
 import { CentralMasthead } from '../../components/CentralMasthead';
 import { AnalystPanel, ShowpieceMatchCard, type ShowpieceAction } from '../../components/WorldCupDashboard';
-import type { Lineup, MatchEvent } from '../../lib/dataProvider';
+import type { Lineup, LineupPlayer, MatchEvent } from '../../lib/dataProvider';
 import type { Match, MatchPrediction } from '../../types';
 import type { MatchDisplayState } from '../../lib/matchStatus';
 import { useMatchDetail, useTeams } from '../../lib/hooks';
@@ -132,25 +134,69 @@ function StatsTab({
   );
 }
 
-function TeamLineup({ team, lineup }: { team: MatchTeamDisplay; lineup?: Lineup }) {
-  const starters = (lineup?.players ?? []).filter((p) => p.isStarter).sort((a, b) => (a.number ?? 99) - (b.number ?? 99));
+function lastNameOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? parts.slice(1).join(' ') : name;
+}
+
+function PitchPlayer({ player, color, leftPct, topPct }: { player: LineupPlayer; color: string; leftPct: number; topPct: number }) {
   return (
-    <View style={styles.lineupCard}>
-      <View style={styles.lineupHead}>
-        <Text style={styles.lineupFlag}>{team.flag}</Text>
-        <Text style={styles.lineupName} numberOfLines={1}>{team.name}</Text>
-        {lineup?.formation ? <Text style={styles.lineupFormation}>{lineup.formation}</Text> : null}
+    <View style={[styles.pitchPlayer, { left: `${leftPct}%`, top: `${topPct}%` }]}>
+      {player.image ? (
+        <Image source={{ uri: player.image }} style={[styles.pitchAvatar, { borderColor: color }]} contentFit="cover" transition={150} />
+      ) : (
+        <View style={[styles.pitchAvatar, styles.pitchAvatarFallback, { borderColor: color }]}>
+          <Text style={[styles.pitchAvatarNum, { color }]}>{player.number ?? ''}</Text>
+        </View>
+      )}
+      <View style={styles.pitchNameWrap}>
+        <Text style={styles.pitchName} numberOfLines={1}>{lastNameOf(player.name)}</Text>
       </View>
-      {starters.length ? (
-        starters.map((p) => (
-          <View key={p.playerId} style={styles.playerRow}>
-            <Text style={styles.playerNum}>{p.number ?? '–'}</Text>
-            <Text style={styles.playerName} numberOfLines={1}>{p.name}</Text>
-            {p.position ? <Text style={styles.playerPos}>{p.position}</Text> : null}
-          </View>
+    </View>
+  );
+}
+
+function PitchLineup({ homeLineup, awayLineup }: { homeLineup?: Lineup; awayLineup?: Lineup }) {
+  const homeStarters = (homeLineup?.players ?? []).filter((p) => p.isStarter);
+  const awayStarters = (awayLineup?.players ?? []).filter((p) => p.isStarter);
+  return (
+    <LinearGradient colors={['#1FA83F', '#138030']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.pitch}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <View key={i} style={[styles.pitchStripe, { top: `${i * 12.5}%`, opacity: i % 2 ? 0.08 : 0 }]} />
+      ))}
+      <View style={styles.pitchHalfLine} />
+      <View style={styles.pitchCenter} />
+      <View style={[styles.pitchBox, styles.pitchBoxTop]} />
+      <View style={[styles.pitchBox, styles.pitchBoxBottom]} />
+      {/* Away team attacks downward (rotated to the top half). */}
+      {awayStarters.map((p) => (
+        <PitchPlayer key={p.playerId} player={p} color={colors.coral} leftPct={(1 - p.gridX) * 100} topPct={8 + p.gridY * 40} />
+      ))}
+      {/* Home team attacks upward from the bottom half. */}
+      {homeStarters.map((p) => (
+        <PitchPlayer key={p.playerId} player={p} color={colors.cyan} leftPct={p.gridX * 100} topPct={92 - p.gridY * 40} />
+      ))}
+    </LinearGradient>
+  );
+}
+
+function SubsColumn({ team, lineup, color }: { team: MatchTeamDisplay; lineup?: Lineup; color: string }) {
+  const subs = (lineup?.players ?? []).filter((p) => !p.isStarter);
+  return (
+    <View style={styles.subsCol}>
+      <View style={styles.subsTeamRow}>
+        <Text style={styles.subsFlag}>{team.flag}</Text>
+        <Text style={[styles.subsTeam, { color }]} numberOfLines={1}>{team.id}</Text>
+      </View>
+      {subs.length ? (
+        subs.slice(0, 12).map((p) => (
+          <Text key={p.playerId} style={styles.subText} numberOfLines={1}>
+            <Text style={styles.subNum}>{p.number ?? '–'} </Text>
+            {lastNameOf(p.name)}
+          </Text>
         ))
       ) : (
-        <Text style={styles.lineupPending}>Lineup pending</Text>
+        <Text style={styles.subText}>—</Text>
       )}
     </View>
   );
@@ -174,10 +220,35 @@ function LineupsTab({ lineups, home, away }: { lineups: Lineup[]; home: MatchTea
     );
   }
 
+  const hasSubs = [homeLineup, awayLineup].some((l) => (l?.players ?? []).some((p) => !p.isStarter));
+
   return (
-    <View style={styles.lineupGrid}>
-      <TeamLineup team={home} lineup={homeLineup} />
-      <TeamLineup team={away} lineup={awayLineup} />
+    <View style={styles.infoCard}>
+      <View style={styles.lineupHeader}>
+        <View style={styles.lineupTeamTag}>
+          <Text style={styles.lineupFlag}>{home.flag}</Text>
+          <Text style={styles.lineupTeamName} numberOfLines={1}>{home.id}</Text>
+          {homeLineup?.formation ? <Text style={[styles.formBadge, { color: colors.cyan, backgroundColor: colors.cyanSoft }]}>{homeLineup.formation}</Text> : null}
+        </View>
+        <Text style={styles.lineupVs}>v</Text>
+        <View style={[styles.lineupTeamTag, styles.lineupTeamTagRight]}>
+          {awayLineup?.formation ? <Text style={[styles.formBadge, { color: colors.coral, backgroundColor: colors.coralSoft }]}>{awayLineup.formation}</Text> : null}
+          <Text style={styles.lineupTeamName} numberOfLines={1}>{away.id}</Text>
+          <Text style={styles.lineupFlag}>{away.flag}</Text>
+        </View>
+      </View>
+
+      <PitchLineup homeLineup={homeLineup} awayLineup={awayLineup} />
+
+      {hasSubs ? (
+        <>
+          <Text style={styles.subsHeading}>SUBSTITUTES</Text>
+          <View style={styles.subsRow}>
+            <SubsColumn team={home} lineup={homeLineup} color={colors.cyan} />
+            <SubsColumn team={away} lineup={awayLineup} color={colors.coral} />
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -402,28 +473,55 @@ const styles = StyleSheet.create({
   compareVal: { width: 70, color: colors.ink, fontSize: font.size.md, fontWeight: font.weight.heavy as TextStyle['fontWeight'] },
 
   // Lineups
-  lineupGrid: { flexDirection: 'row', gap: space.md, flexWrap: 'wrap' },
-  lineupCard: {
-    flexGrow: 1,
-    flexBasis: 220,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: space.lg,
-    gap: 4,
-    ...shadow.card,
-  },
-  lineupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  lineupFlag: { fontSize: 22 },
-  lineupName: { flex: 1, color: colors.ink, fontSize: font.size.md, fontWeight: font.weight.heavy as TextStyle['fontWeight'] },
-  lineupFormation: { color: colors.blue, fontSize: font.size.xs, fontWeight: font.weight.heavy as TextStyle['fontWeight'], backgroundColor: colors.blueSoft, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
-  playerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 5, borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  playerNum: { width: 22, textAlign: 'center', color: colors.textMuted, fontSize: font.size.sm, fontWeight: font.weight.heavy as TextStyle['fontWeight'] },
-  playerName: { flex: 1, color: colors.text, fontSize: font.size.sm, fontWeight: font.weight.semibold as TextStyle['fontWeight'] },
-  playerPos: { color: colors.textFaint, fontSize: font.size.xs, fontWeight: font.weight.bold as TextStyle['fontWeight'] },
-  lineupPending: { color: colors.textFaint, fontSize: font.size.sm, fontStyle: 'italic', paddingVertical: 6 },
   emptyLineup: { alignItems: 'center', gap: space.sm, paddingVertical: space.sm, flexDirection: 'row' },
+
+  // Pitch lineup
+  lineupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.md },
+  lineupTeamTag: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  lineupTeamTagRight: { justifyContent: 'flex-end' },
+  lineupFlag: { fontSize: 20 },
+  lineupTeamName: { color: colors.ink, fontSize: font.size.md, fontWeight: font.weight.heavy as TextStyle['fontWeight'] },
+  lineupVs: { color: colors.textFaint, fontSize: font.size.sm, fontWeight: font.weight.bold as TextStyle['fontWeight'], paddingHorizontal: 8 },
+  formBadge: { fontSize: font.size.xs, fontWeight: font.weight.heavy as TextStyle['fontWeight'], borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+  pitch: {
+    width: '100%',
+    aspectRatio: 0.66,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  pitchStripe: { position: 'absolute', left: 0, right: 0, height: '12.5%', backgroundColor: '#FFFFFF' },
+  pitchHalfLine: { position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.35)' },
+  pitchCenter: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 84,
+    height: 84,
+    marginLeft: -42,
+    marginTop: -42,
+    borderRadius: 42,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  pitchBox: { position: 'absolute', left: '22%', right: '22%', height: '13%', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  pitchBoxTop: { top: 0, borderTopWidth: 0 },
+  pitchBoxBottom: { bottom: 0, borderBottomWidth: 0 },
+  pitchPlayer: { position: 'absolute', width: 58, marginLeft: -29, marginTop: -21, alignItems: 'center' },
+  pitchAvatar: { width: 38, height: 38, borderRadius: 19, borderWidth: 2, backgroundColor: colors.surface },
+  pitchAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  pitchAvatarNum: { fontSize: font.size.md, fontWeight: font.weight.heavy as TextStyle['fontWeight'] },
+  pitchNameWrap: { marginTop: 3, maxWidth: 58, backgroundColor: 'rgba(7,19,35,0.45)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
+  pitchName: { color: '#FFFFFF', fontSize: 9.5, fontWeight: font.weight.bold as TextStyle['fontWeight'], textAlign: 'center' },
+  subsHeading: { color: colors.ink, fontSize: font.size.sm, fontWeight: font.weight.heavy as TextStyle['fontWeight'], marginTop: space.lg, marginBottom: space.sm, letterSpacing: 0.5 },
+  subsRow: { flexDirection: 'row', gap: space.lg },
+  subsCol: { flex: 1, gap: 4 },
+  subsTeamRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  subsFlag: { fontSize: 16 },
+  subsTeam: { fontSize: font.size.sm, fontWeight: font.weight.heavy as TextStyle['fontWeight'] },
+  subText: { color: colors.textMuted, fontSize: font.size.sm, lineHeight: 19 },
+  subNum: { color: colors.textFaint, fontWeight: font.weight.bold as TextStyle['fontWeight'] },
 
   // Where to watch
   watchHero: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceAlt, borderRadius: radius.lg, padding: space.md },
