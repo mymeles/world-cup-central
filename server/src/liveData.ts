@@ -368,7 +368,12 @@ function toLineup(src: EspnLineup | FifaLineup, matchId: string, sourceTag: stri
   };
 }
 
-/** Lineups overlay — ESPN first (rich), FIFA official as the gap-filler. */
+/**
+ * Lineups overlay. ESPN gives the most detailed positions (CD-L, LM…) so we use
+ * it for the on-pitch layout, but FIFA carries an official headshot for nearly
+ * every player — so we enrich each player's image from FIFA (matched by shirt
+ * number, then name). Falls back to FIFA entirely when ESPN has no lineup.
+ */
 export async function getProviderLineups(matchId: string, teams: Team[]): Promise<Lineup[]> {
   const now = Date.now();
   const cached = lineupCache.get(matchId);
@@ -376,20 +381,42 @@ export async function getProviderLineups(matchId: string, teams: Team[]): Promis
 
   const payload = await getProviderPayload(teams);
   const r = teamResolver(teams);
-  let lineups: Lineup[] = [];
 
   const eventId = payload?.espnEventByMatch[matchId];
-  if (eventId) {
-    const sum = await getEspnSummary(eventId);
-    lineups = sum.lineups.map((l) => toLineup(l, matchId, 'espn', r));
-  }
-  if (!lineups.length) {
-    const f = payload?.fifaByMatch[matchId];
-    if (f) {
-      const fl = await fetchFifaLineups(f.idStage, f.idMatch).catch(() => [] as FifaLineup[]);
-      lineups = fl.map((l) => toLineup(l, matchId, 'fifa', r));
+  const fifaRef = payload?.fifaByMatch[matchId];
+  const [espnSummary, fifaRaw] = await Promise.all([
+    eventId ? getEspnSummary(eventId) : Promise.resolve(null),
+    fifaRef ? fetchFifaLineups(fifaRef.idStage, fifaRef.idMatch).catch(() => [] as FifaLineup[]) : Promise.resolve([] as FifaLineup[]),
+  ]);
+
+  const espnLineups = (espnSummary?.lineups ?? []).map((l) => toLineup(l, matchId, 'espn', r));
+  const fifaLineups = fifaRaw.map((l) => toLineup(l, matchId, 'fifa', r));
+
+  // Per-team FIFA image lookup (by shirt number and by name slug).
+  const fifaImages = new Map<string, { byNumber: Map<number, string>; byName: Map<string, string> }>();
+  for (const l of fifaLineups) {
+    const byNumber = new Map<number, string>();
+    const byName = new Map<string, string>();
+    for (const p of l.players) {
+      if (!p.image) continue;
+      if (p.number != null) byNumber.set(p.number, p.image);
+      byName.set(slug(p.name), p.image);
     }
+    fifaImages.set(l.teamId, { byNumber, byName });
   }
+
+  const base = espnLineups.length ? espnLineups : fifaLineups;
+  const lineups = base.map((l) => {
+    const lookup = fifaImages.get(l.teamId);
+    return {
+      ...l,
+      players: l.players.map((p) => ({
+        ...p,
+        image: p.image ?? (p.number != null ? lookup?.byNumber.get(p.number) : undefined) ?? lookup?.byName.get(slug(p.name)) ?? null,
+      })),
+    };
+  });
+
   lineupCache.set(matchId, { expiresAt: now + SUMMARY_TTL_MS, value: lineups });
   return lineups;
 }

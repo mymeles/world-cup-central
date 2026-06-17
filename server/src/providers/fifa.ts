@@ -28,6 +28,7 @@ export interface FifaLineupPlayer {
   number: number | null;
   position: string | null;
   isStarter: boolean;
+  image: string | null;
 }
 
 export interface FifaLineup {
@@ -62,6 +63,13 @@ function mapStatus(raw: number, homeScore: number | null): FifaMatch['status'] {
 }
 
 const POSITIONS: Record<number, string> = { 0: 'GK', 1: 'DEF', 2: 'MID', 3: 'FWD' };
+
+/** FIFA full-res player headshots are ~900KB; request a small transform instead. */
+function fifaPlayerImage(player: any): string | null {
+  const url = player?.PlayerPicture?.PictureUrl;
+  if (!url || typeof url !== 'string') return null;
+  return `${url}?io=transform:fill,width:160,height:160`;
+}
 
 function num(value: unknown): number | null {
   const n = Number(value);
@@ -107,6 +115,7 @@ export async function fetchFifaLineups(idStage: string, idMatch: string): Promis
       number: num(p?.ShirtNumber),
       position: POSITIONS[Number(p?.Position)] ?? null,
       isStarter: Number(p?.Status) === 1,
+      image: fifaPlayerImage(p),
     }));
     const starters = players.filter((p) => p.isStarter);
     if (starters.length) {
