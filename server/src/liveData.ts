@@ -283,20 +283,88 @@ export async function getProviderEvents(matchId: string, teams: Team[]): Promise
   return payload.events[matchId] ?? [];
 }
 
+function isGoalkeeper(position: string | null): boolean {
+  const p = (position || '').toUpperCase();
+  return p === 'G' || p === 'GK' || p.startsWith('GOAL');
+}
+
+/** Row band from a position abbreviation: 1=def, 2=holding mid, 3=attacking mid, 4=forward. */
+function positionBand(position: string | null): 1 | 2 | 3 | 4 {
+  const raw = (position || '').toUpperCase();
+  if (raw === 'DEF') return 1; // FIFA full-word forms
+  if (raw === 'MID') return 2;
+  if (raw === 'FWD') return 4;
+  const p = raw.replace(/[^A-Z]/g, ''); // 'CF-L' → 'CFL'
+  if (p.includes('WB') || p === 'SW') return 1; // wing-back / sweeper = defender
+  if (p.includes('W') || p.endsWith('F') || p.startsWith('F') || p.includes('ST') || p.includes('CF') || p.includes('SS')) return 4; // forward/winger
+  if (p.includes('M')) return p.includes('A') ? 3 : 2; // attacking (AM/CAM) vs holding/central mid
+  if (p.endsWith('B') || p.startsWith('D') || p.startsWith('CB') || p.startsWith('CD')) return 1; // defender
+  return 2;
+}
+
+/** Left→right hint from a position abbreviation for ordering players within a row. */
+function lrHint(position: string | null): number {
+  const p = (position || '').toUpperCase();
+  if (p.startsWith('L') || p.includes('-L') || /L$/.test(p)) return -1;
+  if (p.startsWith('R') || p.includes('-R') || /R$/.test(p)) return 1;
+  return 0;
+}
+
+interface Placeable {
+  position: string | null;
+  number: number | null;
+  formationPlace: number | null;
+}
+
+/**
+ * Normalized pitch coords (x,y in 0..1; y: 0 = own goal line → 1 = attack).
+ * Players are bucketed by position band — reliable across providers — rather than
+ * ESPN's opaque formationPlace. The formation string is used only as a label.
+ */
+function layoutStarters<T extends Placeable>(starters: T[]): Map<T, { x: number; y: number }> {
+  const coords = new Map<T, { x: number; y: number }>();
+  const gk = starters.filter((p) => isGoalkeeper(p.position));
+  const out = starters.filter((p) => !isGoalkeeper(p.position));
+  const band = (b: number) => out.filter((p) => positionBand(p.position) === b);
+
+  const rows = [gk, band(1), band(2), band(3), band(4)].filter((row) => row.length > 0);
+  const R = rows.length;
+  rows.forEach((row, ri) => {
+    const y = R <= 1 ? 0.5 : ri / (R - 1);
+    const ordered = [...row].sort((a, b) => lrHint(a.position) - lrHint(b.position) || (a.number ?? 99) - (b.number ?? 99));
+    ordered.forEach((p, j) => coords.set(p, { x: (j + 1) / (ordered.length + 1), y }));
+  });
+  return coords;
+}
+
 function toLineup(src: EspnLineup | FifaLineup, matchId: string, sourceTag: string, r: TeamResolver): Lineup {
   const teamId = resolveId(r, src.teamAbbr, '') ?? src.teamAbbr;
+  const list: Array<{ name: string; number: number | null; position: string | null; isStarter: boolean; formationPlace?: number | null; image?: string | null }> = src.players;
+  const norm = list.map((p) => ({
+    name: p.name,
+    number: p.number,
+    position: p.position,
+    isStarter: p.isStarter,
+    formationPlace: p.formationPlace ?? null,
+    image: p.image ?? null,
+  }));
+  const coords = layoutStarters(norm.filter((p) => p.isStarter));
   return {
     teamId,
     formation: src.formation,
-    players: src.players.map((p) => ({
-      playerId: `${sourceTag}-${teamId.toLowerCase()}-${slug(p.name)}`,
-      name: p.name,
-      number: p.number,
-      position: p.position,
-      gridX: 0,
-      gridY: 0,
-      isStarter: p.isStarter,
-    })),
+    players: norm.map((p) => {
+      const c = coords.get(p);
+      return {
+        playerId: `${sourceTag}-${teamId.toLowerCase()}-${slug(p.name)}`,
+        name: p.name,
+        number: p.number,
+        position: p.position,
+        gridX: c?.x ?? 0,
+        gridY: c?.y ?? 0,
+        isStarter: p.isStarter,
+        image: p.image,
+      };
+    }),
   };
 }
 

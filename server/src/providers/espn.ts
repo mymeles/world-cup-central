@@ -28,6 +28,7 @@ export interface EspnLineupPlayer {
   position: string | null;
   isStarter: boolean;
   formationPlace: number | null;
+  image: string | null;
 }
 
 export interface EspnLineup {
@@ -120,6 +121,7 @@ export async function fetchEspnSummary(eventId: string): Promise<{ lineups: Espn
       position: p?.position?.abbreviation ?? null,
       isStarter: !!p?.starter,
       formationPlace: p?.formationPlace != null ? Number(p.formationPlace) : null,
+      image: p?.athlete?.headshot?.href ?? null,
     }));
     if (players.length) lineups.push({ teamAbbr: r?.team?.abbreviation ?? '', formation: r?.formation ?? null, players });
   }

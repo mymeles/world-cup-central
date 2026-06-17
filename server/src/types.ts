@@ -54,6 +54,7 @@ export interface LineupPlayer {
   gridX: number;
   gridY: number;
   isStarter: boolean;
+  image?: string | null;
   goals?: number;
   assists?: number;
   rating?: number | null;
