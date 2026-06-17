@@ -73,8 +73,9 @@ export function ShowpieceMatchCard({
   const fav = p && p.homeWin >= p.awayWin ? home : away;
   const favPct = p ? Math.max(p.homeWin, p.awayWin) : 0;
   const status = statusLabel(match);
-  const homeEvents = events.filter((event) => event.teamId === home.id).slice(0, 2);
-  const awayEvents = events.filter((event) => event.teamId === away.id).slice(0, 2);
+  const goals = events.filter((event) => event.type === 'goal');
+  const homeEvents = goals.filter((event) => event.teamId === home.id).slice(0, 3);
+  const awayEvents = goals.filter((event) => event.teamId === away.id).slice(0, 3);
 
   return (
     <View style={styles.showpieceShell}>

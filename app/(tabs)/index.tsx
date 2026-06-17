@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, font, radius, space } from '../../constants/theme';
 import { CentralMasthead } from '../../components/CentralMasthead';
 import { AnalystPanel, DashboardMatchRow, ShowpieceMatchCard, TournamentGlance } from '../../components/WorldCupDashboard';
-import { useMatches, useTeams } from '../../lib/hooks';
+import { useMatches, useMatchDetail, useTeams } from '../../lib/hooks';
 import { dayKey, todayKey, venueLabel } from '../../lib/format';
 import { getMatchDisplayState } from '../../lib/matchStatus';
 import { TEAMS, VENUES } from '../../data/worldcup';
@@ -41,6 +41,9 @@ export default function HomeScreen() {
     );
   }, [matches, todaysMatches]);
 
+  // Pull the featured match's detail so the showpiece card can show goal scorers + minutes.
+  const { data: showpieceDetail } = useMatchDetail(showpiece?.id ?? '');
+
   const stats = useMemo(() => {
     const all = matches ?? [];
     const finished = all.filter((match) => match.status === 'finished');
@@ -71,6 +74,7 @@ export default function HomeScreen() {
                 <ShowpieceMatchCard
                   match={showpiece}
                   teams={teams}
+                  events={showpieceDetail?.events}
                   onAction={(action) => router.push(`/match/${showpiece.id}?tab=${action}`)}
                 />
               );

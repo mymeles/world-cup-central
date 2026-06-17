@@ -32,6 +32,21 @@ function ProbabilityRow({ label, value, color }: { label: string; value: number;
   );
 }
 
+function feedIcon(type: string | null): { name: keyof typeof Ionicons.glyphMap; color: string } {
+  switch (type) {
+    case 'goal':
+      return { name: 'football', color: colors.primary };
+    case 'yellow-card':
+      return { name: 'square', color: colors.accent };
+    case 'red-card':
+      return { name: 'square', color: colors.live };
+    case 'substitution':
+      return { name: 'swap-horizontal', color: colors.blue };
+    default:
+      return { name: 'ellipse', color: colors.textMuted };
+  }
+}
+
 function CompareRow({ label, home, away }: { label: string; home: string; away: string }) {
   return (
     <View style={styles.compareRow}>
@@ -96,13 +111,16 @@ function StatsTab({
         <Text style={styles.infoTitle}>MATCH FEED</Text>
         {events.length ? (
           <View style={styles.feedList}>
-            {events.map((event) => (
-              <View key={event.id} style={styles.feedRow}>
-                <Ionicons name="football" size={16} color={colors.primary} />
-                <Text style={styles.feedMinute}>{event.minute ?? ''}'</Text>
-                <Text style={styles.feedText}>{event.detail ?? event.type ?? 'Match event'}</Text>
-              </View>
-            ))}
+            {events.map((event) => {
+              const ic = feedIcon(event.type);
+              return (
+                <View key={event.id} style={styles.feedRow}>
+                  <Ionicons name={ic.name} size={16} color={ic.color} />
+                  <Text style={styles.feedMinute}>{event.minute != null ? `${event.minute}'` : ''}</Text>
+                  <Text style={styles.feedText}>{event.detail ?? event.type ?? 'Match event'}</Text>
+                </View>
+              );
+            })}
           </View>
         ) : (
           <Text style={styles.emptyFeed}>

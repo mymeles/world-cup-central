@@ -139,11 +139,17 @@ export async function fetchEspnSummary(eventId: string): Promise<{ lineups: Espn
     let teamName: string | null = e?.team?.displayName ?? e?.team?.name ?? null;
     let detail = text;
     if (type === 'goal') {
-      // "Goal! France 1, Senegal 0. Kylian Mbappé (France) right foot…" → scorer + team
-      const m = text.match(/\.\s*([^.()]+?)\s*\(([^)]+)\)/);
-      if (m) {
-        detail = m[1].trim();
-        teamName = m[2].trim();
+      const og = text.match(/own goal by ([^,.]+)/i);
+      if (og) {
+        detail = `${og[1].trim()} (OG)`;
+      } else {
+        // "Goal! France 1, Senegal 0. Kylian Mbappé (France) right foot…" → scorer + team
+        const m = text.match(/\.\s*([^.()]+?)\s*\(([^)]+)\)/);
+        if (m) {
+          detail = m[1].trim();
+          teamName = m[2].trim();
+        }
+        if (/penalty/i.test(text)) detail = `${detail} (pen)`;
       }
     } else {
       const who = (e?.athletesInvolved ?? []).map((a: any) => a?.displayName).filter(Boolean).join(', ');
