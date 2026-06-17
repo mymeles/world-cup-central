@@ -8,6 +8,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { config } from './config.js';
 import { dbWrite } from './supabase.js';
 import { getGroups, getMatchDetail, getMatches, getStandings, getTopScorers, getTeams } from './repo.js';
+import { getLatestNews } from './liveData.js';
 import type { Match, Team } from './types.js';
 
 interface Citation {
@@ -318,7 +319,7 @@ async function fetchWebContext(google: ReturnType<typeof createGoogleGenerativeA
 }
 
 async function buildContext(question = ''): Promise<string> {
-  const [teams, matches, groups, scorers] = await Promise.all([getTeams(), getMatches(), getGroups(), getTopScorers(6)]);
+  const [teams, matches, groups, scorers, news] = await Promise.all([getTeams(), getMatches(), getGroups(), getTopScorers(6), getLatestNews()]);
   const nameOf = Object.fromEntries(teams.map((t) => [t.id, t.name]));
   const now = new Date();
   const todayKey = etDateKey(now);
@@ -349,6 +350,12 @@ async function buildContext(question = ''): Promise<string> {
     'GROUNDING RULE: The app database is the source of truth for 2026 fixtures, scores, standings, scorers, and match timing shown in the product. Google Search may be used for external context such as historical meetings, team news, injuries, public reporting, tactics, and broader World Cup references. If web context conflicts with this app DB for a 2026 score/status, mention the discrepancy instead of overwriting the app DB.',
     'PREDICTION RULE: Forecasts are allowed when asked, including hypothetical matchups. Use the rating model data here, label them as predictions, and do not claim an unscheduled match is on the fixture list. If REQUESTED MATCHUP FORECAST is present, start with the prediction/probabilities; put any unscheduled/hypothetical caveat after the forecast.',
     requestedForecast,
+    news.length
+      ? `LATEST HEADLINES (recent World Cup news, treat as current context; cite naturally as "recent reporting"): ${news
+          .slice(0, 6)
+          .map((n) => `• ${n.headline}${n.summary ? ` — ${n.summary.slice(0, 150)}` : ''}`)
+          .join('  ')}`
+      : '',
     `GROUP LEADERS: ${leaders.filter(Boolean).join(' | ')}.`,
     `TOP SCORERS: ${scorers.map((s) => `${s.name} (${s.goals}G)`).join(', ') || 'n/a'}.`,
     `TODAY (${todayKey}, America/New_York): ${today.map((m) => matchLine(m, nameOf)).join('; ') || 'none'}.`,

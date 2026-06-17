@@ -6,7 +6,7 @@
 import { db } from './supabase.js';
 import type { Lineup, Match, MatchDetail, MatchEvent, StandingRow, Team } from './types.js';
 import { applyMatchCorrections, eventCorrections, scorerCorrections } from './corrections.js';
-import { getProviderEvents, getProviderScorers, mergeProviderMatches } from './liveData.js';
+import { getProviderEvents, getProviderLineups, getProviderScorers, mergeProviderMatches } from './liveData.js';
 
 type Row = Record<string, any>;
 
@@ -148,7 +148,7 @@ export async function getMatchDetail(id: string): Promise<MatchDetail | null> {
   const statByPlayer: Record<string, Row> = {};
   for (const s of (stats ?? []) as Row[]) statByPlayer[s.player_id] = s;
 
-  const builtLineups: Lineup[] = (lineups ?? []).map((l: Row) => ({
+  let builtLineups: Lineup[] = (lineups ?? []).map((l: Row) => ({
     teamId: l.team_id,
     formation: l.formation,
     players: ((lps ?? []) as Row[])
@@ -166,6 +166,12 @@ export async function getMatchDetail(id: string): Promise<MatchDetail | null> {
         rating: statByPlayer[p.player_id]?.rating ?? null,
       })),
   }));
+
+  // No lineups stored yet (the common case) → overlay live provider lineups
+  // (ESPN, with FIFA official as the fallback) so the detail screen has them.
+  if (!builtLineups.some((l) => l.players.length)) {
+    builtLineups = await getProviderLineups(id, teams);
+  }
 
   const builtEvents: MatchEvent[] = ((events ?? []) as Row[]).map((e) => ({
     id: e.id, minute: e.minute, type: e.type, teamId: e.team_id, playerId: e.player_id, detail: e.detail,
